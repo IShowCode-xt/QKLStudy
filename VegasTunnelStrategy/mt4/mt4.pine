@@ -1,0 +1,132 @@
+//+------------------------------------------------------------------+
+//|                                                     VegasTunnel.mq4 |
+//|                        Copyright 2024, MetaTrader 4 Trading Ltd.  |
+//|                                             https://www.mql5.com  |
+//+------------------------------------------------------------------+
+#property strict
+
+// Input parameters
+input int ema12_length = 12;
+input int ema144_length = 144;
+input int ema169_length = 169;
+input int ema576_length = 576;
+input int ema676_length = 676;
+input double risk_amount = 100.0; // Risk Amount in USD
+input double initial_capital = 1000.0; // Initial Capital in USD
+input int atr_length = 14;
+input int adx_period = 14;
+input int adx_threshold = 25;
+
+// Global variables
+double ema12, ema144, ema169, ema576, ema676;
+double atr, adx;
+double position_size;
+
+// Helper function to calculate EMA
+double CalculateEMA(int period, int shift)
+{
+   return iMA(NULL, 0, period, 0, MODE_EMA, PRICE_CLOSE, shift);
+}
+
+// Helper function to calculate ATR
+double CalculateATR(int period)
+{
+   return iATR(NULL, 0, period, 0);
+}
+
+// Helper function to calculate ADX
+double CalculateADX(int period)
+{
+   return iADX(NULL, 0, period, PRICE_CLOSE, MODE_MAIN, 0);
+}
+
+// Entry and Exit Logic
+void CheckStrategy()
+{
+   // Calculate EMAs
+   ema12 = CalculateEMA(ema12_length, 0);
+   ema144 = CalculateEMA(ema144_length, 0);
+   ema169 = CalculateEMA(ema169_length, 0);
+   ema576 = CalculateEMA(ema576_length, 0);
+   ema676 = CalculateEMA(ema676_length, 0);
+
+   // Calculate ATR and ADX
+   atr = CalculateATR(atr_length);
+   adx = CalculateADX(adx_period);
+
+   // Calculate position size
+   position_size = risk_amount / initial_capital;
+
+// Previous values of EMAs
+double ema169_prev = CalculateEMA(ema169_length, 1);
+double ema676_prev = CalculateEMA(ema676_length, 1);
+
+// Long entry condition
+if (ema169 > ema676 && ema169_prev <= ema676_prev && adx > adx_threshold)
+{
+    double stop_loss = Bid - atr;
+    double take_profit = 0; // Adjust take profit logic if needed
+    OrderSend(Symbol(), OP_BUY, position_size, Ask, 3, stop_loss, take_profit, "Long Entry", 0, 0, clrGreen);
+}
+
+// Short entry condition
+if (ema169 < ema676 && ema169_prev >= ema676_prev && adx > adx_threshold)
+{
+    double stop_loss = Bid + atr;
+    double take_profit = 0; // Adjust take profit logic if needed
+    OrderSend(Symbol(), OP_SELL, position_size, Bid, 3, stop_loss, take_profit, "Short Entry", 0, 0, clrRed);
+}
+
+
+   // Exit conditions for long positions
+   if (OrdersTotal() > 0 && OrderSelect(0, SELECT_BY_POS) && OrderType() == OP_BUY)
+   {
+      if (ema12 < ema169)
+      {
+         OrderClose(OrderTicket(), OrderLots(), Bid, 3, clrYellow);
+      }
+      if (ema12 < ema676)
+      {
+         OrderClose(OrderTicket(), OrderLots(), Bid, 3, clrYellow);
+      }
+   }
+
+   // Exit conditions for short positions
+   if (OrdersTotal() > 0 && OrderSelect(0, SELECT_BY_POS) && OrderType() == OP_SELL)
+   {
+      if (ema12 > ema169)
+      {
+         OrderClose(OrderTicket(), OrderLots(), Ask, 3, clrYellow);
+      }
+      if (ema12 > ema676)
+      {
+         OrderClose(OrderTicket(), OrderLots(), Ask, 3, clrYellow);
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   Print("Optimized Vegas Tunnel Strategy initialized");
+   return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   Print("Optimized Vegas Tunnel Strategy deinitialized");
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   CheckStrategy();
+}
+//+------------------------------------------------------------------+

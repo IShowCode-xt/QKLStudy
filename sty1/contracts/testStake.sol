@@ -26,8 +26,8 @@ contract RCCStake is
     bytes32 public constant ADMIN_ROLE = keccak256("admin_role");
     bytes32 public constant UPGRADE_ROLE = keccak256("upgrade_role");
 
-    uint256 public constant ETH_PID = 0;
-    
+    uint256 public constant nativeCurrency_PID = 0;
+
     // ************************************** DATA STRUCTURE **************************************
     /*
     Basically, any point in time, the amount of RCCs entitled to a user but is pending to be distributed is:
@@ -81,7 +81,7 @@ contract RCCStake is
     // First block that RCCStake will end from
     uint256 public endBlock;
     // RCC token reward per block
-    uint256 public rccPerBlock;
+    uint256 public RCCPerBlock;
 
     // Pause the withdraw function
     bool public withdrawPaused;
@@ -114,7 +114,7 @@ contract RCCStake is
 
     event SetEndBlock(uint256 indexed endBlock);
 
-    event SetRCCPerBlock(uint256 indexed rccPerBlock);
+    event SetRCCPerBlock(uint256 indexed RCCPerBlock);
 
     event AddPool(address indexed stTokenAddress, uint256 indexed poolWeight, uint256 indexed lastRewardBlock, uint256 minDepositAmount, uint256 unstakeLockedBlocks);
 
@@ -130,7 +130,7 @@ contract RCCStake is
 
     event Withdraw(address indexed user, uint256 indexed poolId, uint256 amount, uint256 indexed blockNumber);
 
-    event Claim(address indexed user, uint256 indexed poolId, uint256 rccReward);
+    event Claim(address indexed user, uint256 indexed poolId, uint256 RCCReward);
 
     // ************************************** MODIFIER **************************************
 
@@ -156,12 +156,13 @@ contract RCCStake is
         IERC20 _RCC,
         uint256 _startBlock,
         uint256 _endBlock,
-        uint256 _rccPerBlock
+        uint256 _RCCPerBlock
     ) public initializer {
-        require(_startBlock <= _endBlock && _rccPerBlock > 0, "invalid parameters");
+        require(_startBlock <= _endBlock && _RCCPerBlock > 0, "invalid parameters");
 
         __AccessControl_init();
         __UUPSUpgradeable_init();
+         __Pausable_init();
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(UPGRADE_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);
@@ -170,7 +171,7 @@ contract RCCStake is
 
         startBlock = _startBlock;
         endBlock = _endBlock;
-        rccPerBlock = _rccPerBlock;
+        RCCPerBlock = _RCCPerBlock;
 
     }
 
@@ -262,12 +263,12 @@ contract RCCStake is
     /**
      * @notice Update the RCC reward amount per block. Can only be called by admin.
      */
-    function setRCCPerBlock(uint256 _rccPerBlock) public onlyRole(ADMIN_ROLE) {
-        require(_rccPerBlock > 0, "invalid parameter");
+    function setRCCPerBlock(uint256 _RCCPerBlock) public onlyRole(ADMIN_ROLE) {
+        require(_RCCPerBlock > 0, "invalid parameter");
 
-        rccPerBlock = _rccPerBlock;
+        RCCPerBlock = _RCCPerBlock;
 
-        emit SetRCCPerBlock(_rccPerBlock);
+        emit SetRCCPerBlock(_RCCPerBlock);
     }
 
     /**
@@ -275,7 +276,7 @@ contract RCCStake is
      * DO NOT add the same staking token more than once. RCC rewards will be messed up if you do
      */
     function addPool(address _stTokenAddress, uint256 _poolWeight, uint256 _minDepositAmount, uint256 _unstakeLockedBlocks,  bool _withUpdate) public onlyRole(ADMIN_ROLE) {
-        // Default the first pool to be ETH pool, so the first pool must be added with stTokenAddress = address(0x0)
+        // Default the first pool to be nativeCurrency pool, so the first pool must be added with stTokenAddress = address(0x0)
         if (pool.length > 0) {
             require(_stTokenAddress != address(0x0), "invalid staking token address");
         } else {
@@ -321,7 +322,7 @@ contract RCCStake is
      */
     function setPoolWeight(uint256 _pid, uint256 _poolWeight, bool _withUpdate) public onlyRole(ADMIN_ROLE) checkPid(_pid) {
         require(_poolWeight > 0, "invalid pool weight");
-        
+
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -348,12 +349,12 @@ contract RCCStake is
      * @param _to      To block number (exluded)
      */
     function getMultiplier(uint256 _from, uint256 _to) public view returns(uint256 multiplier) {
-        require(_from <= _to, "invalid block");
+        require(_from <= _to, "invalid block range");
         if (_from < startBlock) {_from = startBlock;}
         if (_to > endBlock) {_to = endBlock;}
         require(_from <= _to, "end block must be greater than start block");
         bool success;
-        (success, multiplier) = (_to - _from).tryMul(rccPerBlock);
+        (success, multiplier) = (_to - _from).tryMul(RCCPerBlock);
         require(success, "multiplier overflow");
     }
 
@@ -375,8 +376,8 @@ contract RCCStake is
 
         if (_blockNumber > pool_.lastRewardBlock && stSupply != 0) {
             uint256 multiplier = getMultiplier(pool_.lastRewardBlock, _blockNumber);
-            uint256 rccForPool = multiplier * pool_.poolWeight / totalPoolWeight;
-            accRCCPerST = accRCCPerST + rccForPool * (1 ether) / stSupply;
+            uint256 RCCForPool = multiplier * pool_.poolWeight / totalPoolWeight;
+            accRCCPerST = accRCCPerST + RCCForPool * (1 ether) / stSupply;
         }
 
         return user_.stAmount * accRCCPerST / (1 ether) - user_.finishedRCC + user_.pendingRCC;
@@ -416,21 +417,21 @@ contract RCCStake is
         }
 
         (bool success1, uint256 totalRCC) = getMultiplier(pool_.lastRewardBlock, block.number).tryMul(pool_.poolWeight);
-        require(success1, "overflow");
+        require(success1, "totalRCC mul poolWeight overflow");
 
         (success1, totalRCC) = totalRCC.tryDiv(totalPoolWeight);
-        require(success1, "overflow");
+        require(success1, "totalRCC div totalPoolWeight overflow");
 
         uint256 stSupply = pool_.stTokenAmount;
         if (stSupply > 0) {
             (bool success2, uint256 totalRCC_) = totalRCC.tryMul(1 ether);
-            require(success2, "overflow");
+            require(success2, "totalRCC mul 1 ether overflow");
 
             (success2, totalRCC_) = totalRCC_.tryDiv(stSupply);
-            require(success2, "overflow");
+            require(success2, "totalRCC div stSupply overflow");
 
             (bool success3, uint256 accRCCPerST) = pool_.accRCCPerST.tryAdd(totalRCC_);
-            require(success3, "overflow");
+            require(success3, "pool accRCCPerST overflow");
             pool_.accRCCPerST = accRCCPerST;
         }
 
@@ -450,16 +451,16 @@ contract RCCStake is
     }
 
     /**
-     * @notice Deposit staking ETH for RCC rewards
+     * @notice Deposit staking nativeCurrency for RCC rewards
      */
-    function depositETH() public whenNotPaused() payable {
-        Pool storage pool_ = pool[ETH_PID];
+    function depositnativeCurrency() public whenNotPaused() payable {
+        Pool storage pool_ = pool[nativeCurrency_PID];
         require(pool_.stTokenAddress == address(0x0), "invalid staking token address");
 
         uint256 _amount = msg.value;
         require(_amount >= pool_.minDepositAmount, "deposit amount is too small");
 
-        _deposit(ETH_PID, _amount);
+        _deposit(nativeCurrency_PID, _amount);
     }
 
     /**
@@ -470,7 +471,7 @@ contract RCCStake is
      * @param _amount    Amount of staking tokens to be deposited
      */
     function deposit(uint256 _pid, uint256 _amount) public whenNotPaused() checkPid(_pid) {
-        require(_pid != 0, "deposit not support ETH staking");
+        require(_pid != 0, "deposit not support nativeCurrency staking");
         Pool storage pool_ = pool[_pid];
         require(_amount > pool_.minDepositAmount, "deposit amount is too small");
 
@@ -544,7 +545,7 @@ contract RCCStake is
 
         if (pendingWithdraw_ > 0) {
             if (pool_.stTokenAddress == address(0x0)) {
-                _safeETHTransfer(msg.sender, pendingWithdraw_);
+                _safenativeCurrencyTransfer(msg.sender, pendingWithdraw_);
             } else {
                 IERC20(pool_.stTokenAddress).safeTransfer(msg.sender, pendingWithdraw_);
             }
@@ -596,7 +597,7 @@ contract RCCStake is
             require(success1, "user stAmount mul accRCCPerST overflow");
             (success1, accST) = accST.tryDiv(1 ether);
             require(success1, "accST div 1 ether overflow");
-            
+
             (bool success2, uint256 pendingRCC_) = accST.trySub(user_.finishedRCC);
             require(success2, "accST sub finishedRCC overflow");
 
@@ -646,21 +647,21 @@ contract RCCStake is
     }
 
     /**
-     * @notice Safe ETH transfer function
+     * @notice Safe nativeCurrency transfer function
      *
-     * @param _to        Address to get transferred ETH
-     * @param _amount    Amount of ETH to be transferred
+     * @param _to        Address to get transferred nativeCurrency
+     * @param _amount    Amount of nativeCurrency to be transferred
      */
-    function _safeETHTransfer(address _to, uint256 _amount) internal {
+    function _safenativeCurrencyTransfer(address _to, uint256 _amount) internal {
         (bool success, bytes memory data) = address(_to).call{
             value: _amount
         }("");
 
-        require(success, "ETH transfer call failed");
+        require(success, "nativeCurrency transfer call failed");
         if (data.length > 0) {
             require(
                 abi.decode(data, (bool)),
-                "ETH transfer operation did not succeed"
+                "nativeCurrency transfer operation did not succeed"
             );
         }
     }

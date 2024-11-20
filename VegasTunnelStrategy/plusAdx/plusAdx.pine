@@ -1,0 +1,74 @@
+//@version=5
+strategy("Optimized Vegas Tunnel Strategy", overlay=true)
+
+// 输入参数
+ema12_length = input.int(12, title="EMA12 Length", minval=1, step=1)
+ema144_length = input.int(144, title="EMA144 Length", minval=1, step=1)
+ema169_length = input.int(169, title="EMA169 Length", minval=1, step=1)
+ema576_length = input.int(576, title="EMA576 Length", minval=1, step=1)
+ema676_length = input.int(676, title="EMA676 Length", minval=1, step=1)
+
+adx_threshold = input.int(25, title="ADX Threshold for Trend", minval=1, step=1)
+atr_length = input.int(14, title="ATR Length", minval=1, step=1)
+risk_amount = input.float(100, title="Risk Amount (USD)", minval=0.01, step=0.01)
+initial_capital = input.float(1000, title="Initial Capital (USD)", minval=0.01, step=0.01)
+position_size = risk_amount / initial_capital
+
+// 计算EMA
+ema12 = ta.ema(close, ema12_length)
+ema144 = ta.ema(close, ema144_length)
+ema169 = ta.ema(close, ema169_length)
+ema576 = ta.ema(close, ema576_length)
+ema676 = ta.ema(close, ema676_length)
+
+// 计算ADX和ATR
+[_, _, adx] = ta.dmi(14, 14)
+atr = ta.atr(atr_length)
+
+// 策略逻辑
+var float stop_loss_level = na
+var float take_profit_level = na
+long_entry = ta.crossover(ema169, ema676) and adx > adx_threshold
+long_exit_60 = ta.crossunder(ema12, ema169)
+long_exit_full = ta.crossunder(ema12, ema676)
+
+short_entry = ta.crossunder(ema169, ema676) and adx > adx_threshold
+short_exit_60 = ta.crossover(ema12, ema169)
+short_exit_full = ta.crossover(ema12, ema676)
+
+// 多单逻辑
+if (long_entry)
+    strategy.entry("Long", strategy.long, qty=position_size * initial_capital)
+    stop_loss_level := close - atr // 使用 ATR 动态止损
+
+if (strategy.position_size > 0)
+    if (long_exit_60)
+        strategy.close("Long", qty_percent=60)
+    if (long_exit_full)
+        strategy.close("Long")
+    if (close < stop_loss_level)
+        strategy.close("Long")
+
+// 空单逻辑
+if (short_entry)
+    strategy.entry("Short", strategy.short, qty=position_size * initial_capital)
+    stop_loss_level := close + atr // 使用 ATR 动态止损
+
+if (strategy.position_size < 0)
+    if (short_exit_60)
+        strategy.close("Short", qty_percent=60)
+    if (short_exit_full)
+        strategy.close("Short")
+    if (close > stop_loss_level)
+        strategy.close("Short")
+
+// 绘图
+plot(ema12, color=color.yellow, title="EMA12")
+plot(ema144, color=color.orange, title="EMA144")
+plot(ema169, color=color.green, title="EMA169")
+plot(ema576, color=color.blue, title="EMA576")
+plot(ema676, color=color.red, title="EMA676")
+
+// 绘制 ADX
+hline(adx_threshold, "ADX Threshold", color=color.gray)
+plot(adx, color=color.purple, title="ADX")
