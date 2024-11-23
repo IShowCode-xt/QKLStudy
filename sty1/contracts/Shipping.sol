@@ -20,12 +20,12 @@ status = ShippingStatus.Delivered;
 emit LogNewAlert("Your package has arrived"); } 
 // Function to get the status of the shipping 
 function getStatus(ShippingStatus _status) internal pure returns (string memory statusText) { 
-// Check the current status and return the correct name
+// 
  if (ShippingStatus.Pending == _status) return "Pending"; 
  if (ShippingStatus.Shipped == _status) return "Shipped"; 
  if (ShippingStatus.Delivered == _status) return "Delivered"; 
  } 
- // Get status of your shipped item
+ // 
   function Status() public view returns (string memory) { 
   ShippingStatus _status = status; 
   return getStatus(_status); 
