@@ -26,4 +26,4 @@ contract MyToken is ERC20, Ownable {
     receive() external payable {
         mint();
     }
-}
+}//test

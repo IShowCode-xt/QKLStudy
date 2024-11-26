@@ -6,6 +6,7 @@
     "undici": "^6.19.8"
   },
   "dependencies": {
+    "@nomicfoundation/edr-win32-x64-msvc": "^0.6.5",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
     "dotenv": "^16.4.5",
